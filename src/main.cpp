@@ -3,9 +3,16 @@
 #include "macro_config.hpp"
 #include "pico_rgb_keypad.hpp"
 
-// Standard keyboard descriptor
+
+enum {
+  REPORT_ID_KEYBOARD = 1,
+  REPORT_ID_CONSUMER = 2,
+};
+
+// Standard keyboard + consumer control descriptor
 uint8_t const desc_hid_report[] = {
-  TUD_HID_REPORT_DESC_KEYBOARD()
+  TUD_HID_REPORT_DESC_KEYBOARD(HID_REPORT_ID(REPORT_ID_KEYBOARD)),
+  TUD_HID_REPORT_DESC_CONSUMER(HID_REPORT_ID(REPORT_ID_CONSUMER))
 };
 
 // Hardware objects
@@ -71,14 +78,26 @@ void send_macro(const MacroKey& macro) {
     Serial.println("HID not ready (still trying anyway)");
   }
 
+  if (macro.consumer_code != 0) {
+    // Press
+    usb_hid.sendReport16(REPORT_ID_CONSUMER, macro.consumer_code);
+    delay(50);
+    // Release
+    usb_hid.sendReport16(REPORT_ID_CONSUMER, 0);
+
+    Serial.print("Consumer key sent: 0x");
+    Serial.println(macro.consumer_code, HEX);
+    return;
+  }
+
   uint8_t report[8] = {0};
   report[0] = macro.modifier;  // Modifier byte
   report[2] = macro.key_code;   // Keycode
 
-  usb_hid.sendReport(0, report, 8); // key press
+  usb_hid.sendReport(REPORT_ID_KEYBOARD, report, 8); // key press
   delay(50);
   memset(report, 0, sizeof(report));
-  usb_hid.sendReport(0, report, 8); // key release
+  usb_hid.sendReport(REPORT_ID_KEYBOARD, report, 8); // key release
 
   Serial.print("Macro sent: ");
   Serial.println(macro.description);

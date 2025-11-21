@@ -6,6 +6,7 @@
 struct MacroKey {
   uint8_t key_code;           // HID key code
   uint8_t modifier;           // Modifier keys (CTRL, ALT, etc.)
+  uint16_t consumer_code;     // 0 = none, otherwise Consumer usage (media)
   const char* description;    // Human readable description
   uint32_t color;            // RGB color for this key (0xRRGGBB)
 };
@@ -16,6 +17,14 @@ struct MacroKey {
 #define MODIFIER_SHIFT    0x02
 #define MODIFIER_ALT      0x04
 #define MODIFIER_GUI      0x08  // Windows/Cmd key
+
+// Consumer control usage IDs (16-bit)
+#define MEDIA_PLAY_PAUSE       0x00CD
+#define MEDIA_SCAN_NEXT        0x00B5
+#define MEDIA_SCAN_PREVIOUS    0x00B6
+#define MEDIA_VOL_INCREMENT    0x00E9
+#define MEDIA_VOL_DECREMENT    0x00EA
+#define MEDIA_MUTE             0x00E2
 
 enum Colors {
     GREEN = 0x00FF00,
@@ -33,28 +42,28 @@ enum Colors {
 // Default macro configuration (16 keys)
 const MacroKey default_macros[16] = {
   // Row 1 (keys 0-3)
-  {HID_KEY_C,           MODIFIER_GUI,        "Copy",           0x00FF00},  // Green
-  {HID_KEY_V,           MODIFIER_GUI,        "Paste",          0x0000FF},  // Blue
-  {HID_KEY_Z,           MODIFIER_GUI,        "Undo",           0xFF0000},  // Red
-  {HID_KEY_S,           MODIFIER_GUI,        "Save",           0xFFFF00},  // Yellow
+  {HID_KEY_C,           MODIFIER_GUI,0,        "Copy",           0x00FF00},  // Green
+  {HID_KEY_V,           MODIFIER_GUI,0,        "Paste",          0x0000FF},  // Blue
+  {HID_KEY_Z,           MODIFIER_GUI,0,        "Undo",           0xFF0000},  // Red
+  {HID_KEY_S,           MODIFIER_GUI,0,        "Save",           0xFFFF00},  // Yellow
   
   // Row 2 (keys 4-7)
-  {HID_KEY_TAB,         MODIFIER_ALT,       "Alt+Tab",        0xFF00FF},  // Magenta
-  {HID_KEY_L,           MODIFIER_GUI,         "Lock Screen",    0x00FFFF},  // Cyan
-  {HID_KEY_F5,          MODIFIER_NONE, "Refresh",        0x80FF00},  // Lime
-  {HID_KEY_ESCAPE,      MODIFIER_NONE, "Escape",         0xFF8000},  // Orange
+  {HID_KEY_TAB,         MODIFIER_GUI,0,       "CMD+Tab",        0xFF00FF},  // Magenta
+  {HID_KEY_L,           MODIFIER_GUI,0,         "Lock Screen",    0x00FFFF},  // Cyan
+  {HID_KEY_Z,          MODIFIER_GUI | MODIFIER_SHIFT,0, "Redo",        0x80FF00},  // Lime
+  {HID_KEY_ESCAPE,      MODIFIER_NONE,0, "Escape",         0xFF8000},  // Orange
   
   // Row 3 (keys 8-11)
-  {HID_KEY_SPACE,       MODIFIER_NONE, "Play/Pause",     0x8000FF},  // Purple
-  {HID_KEY_ARROW_LEFT,  MODIFIER_NONE, "Previous Track", 0x0080FF},  // Sky Blue
-  {HID_KEY_ARROW_RIGHT, MODIFIER_NONE, "Next Track",     0xFF0080},  // Pink
-  {HID_KEY_DELETE,      MODIFIER_NONE, "Delete",         0x800000},  // Dark Red
+  {0,       MODIFIER_NONE,MEDIA_PLAY_PAUSE, "Play/Pause",     0x8000FF},  // Purple
+  {0,  MODIFIER_NONE,MEDIA_SCAN_PREVIOUS, "Previous Track", 0x0080FF},  // Sky Blue
+  {0, MODIFIER_NONE,MEDIA_SCAN_NEXT, "Next Track",     0xFF0080},  // Pink
+  {HID_KEY_DELETE,      MODIFIER_NONE,0, "Delete",         0x800000},  // Dark Red
   
   // Row 4 (keys 12-15)
-  {HID_KEY_ENTER,       MODIFIER_NONE, "Enter",          0x008000},  // Dark Green
-  {HID_KEY_BACKSPACE,   MODIFIER_NONE, "Backspace",      0x000080},  // Dark Blue
-  {HID_KEY_HOME,        MODIFIER_NONE, "Home",           0x808000},  // Olive
-  {HID_KEY_END,         MODIFIER_NONE, "End",            0x800080}   // Purple
+  {HID_KEY_ENTER,       MODIFIER_NONE,0, "Enter",          0x008000},  // Dark Green
+  {HID_KEY_BACKSPACE,   MODIFIER_NONE,0, "Backspace",      0x000080},  // Dark Blue
+  {HID_KEY_HOME,        MODIFIER_NONE,0, "Home",           0x808000},  // Olive
+  {HID_KEY_END,         MODIFIER_NONE,0, "End",            0x800080}   // Purple
 };
 
 // Color definitions for LED states
