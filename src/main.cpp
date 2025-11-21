@@ -1,9 +1,4 @@
-
 #include "Arduino.h"
-#include <stdio.h>
-#include <stdlib.h>
-#include <math.h>
-#include "pico/stdlib.h"
 #include <Adafruit_TinyUSB.h>
 
 #include "pico_rgb_keypad.hpp"
@@ -13,10 +8,9 @@
   Pico RGB Keypad Macro Keyboard
   
   Features:
-  - 16 customizable macro keys
-  - USB HID keyboard functionality
-  - RGB LED feedback
-  - Configurable key mappings with modifiers
+  - 16 customizable macro keys with RGB LED feedback
+  - USB HID keyboard + Serial functionality  
+  - Configurable key mappings with modifier support
   - Visual feedback for key presses
 */
 
@@ -30,7 +24,6 @@ Adafruit_USBD_HID usb_hid;
 uint16_t button_states = 0;
 uint16_t last_button_states = 0;
 uint32_t last_update = 0;
-uint8_t beat_counter = 0;
 bool hid_ready = false;
 
 // Macro configuration (can be customized)
@@ -85,35 +78,10 @@ void update_leds() {
   pico_keypad.update();
 }
 
-// Initialize the macro keyboard
-void setup_macro_keyboard() {
-  // Copy default macro configuration
-  for (int i = 0; i < 16; i++) {
-    current_macros[i] = default_macros[i];
-  }
-  
-  // Initialize hardware
-  pico_keypad.init();
-  pico_keypad.set_brightness(BRIGHTNESS_NORMAL);
-  
-  // Initialize USB HID 
-  usb_hid.setPollInterval(2);
-  usb_hid.begin();
-  
-  // Wait for USB to be ready
-  while (!TinyUSBDevice.mounted()) {
-    delay(1);
-  }
-  
-  hid_ready = true;
-  
-  // Initial LED setup - show macro colors
-  update_leds();
-}
-
 // Send macro key combination
 void send_macro(const MacroKey& macro) {
   if (!hid_ready || !usb_hid.ready()) {
+    Serial.println("USB HID not ready!");
     return;
   }
   
@@ -149,6 +117,9 @@ void process_keyboard() {
   for (int i = 0; i < PicoRGBKeypad::NUM_PADS; i++) {
     if (pressed_buttons & (1 << i)) {
       // Button was just pressed
+      Serial.print("Button ");
+      Serial.print(i);
+      Serial.println(" pressed!");
       send_macro(current_macros[i]);
     }
   }
@@ -162,7 +133,7 @@ void process_keyboard() {
 
 // Print macro configuration to serial
 void print_macro_config() {
-  Serial.println("\n=== Current Macro Configuration ===");
+  Serial.println("\\n=== Current Macro Configuration ===");
   for (int i = 0; i < 16; i++) {
     Serial.print("Key ");
     Serial.print(i);
@@ -176,26 +147,65 @@ void print_macro_config() {
     Serial.print(current_macros[i].color, HEX);
     Serial.println(")");
   }
-  Serial.println("==================================\n");
+  Serial.println("==================================");
 }
 
+// Arduino setup function
 void setup() {
   // Initialize serial for debugging
   Serial.begin(115200);
   
   // Small delay to allow serial to initialize
-  delay(1000);
+  delay(2000);
   
   Serial.println("Pico RGB Keypad Macro Keyboard Starting...");
   
-  // Setup the macro keyboard
-  setup_macro_keyboard();
+  // Copy default macro configuration
+  for (int i = 0; i < 16; i++) {
+    current_macros[i] = default_macros[i];
+  }
   
-  Serial.println("Macro keyboard ready!");
+  // Initialize hardware
+  pico_keypad.init();
+  pico_keypad.set_brightness(BRIGHTNESS_NORMAL);
+  
+  Serial.println("Hardware initialized...");
+  
+  // Initialize USB HID
+  usb_hid.setPollInterval(2);
+  usb_hid.begin();
+  
+  Serial.println("USB HID initialized...");
+  
+  // Wait for USB to be ready (with timeout)
+  uint32_t start_time = millis();
+  while (!TinyUSBDevice.mounted() && (millis() - start_time < 5000)) {
+    delay(100);
+    Serial.print(".");
+  }
+  Serial.println();
+  
+  if (TinyUSBDevice.mounted()) {
+    hid_ready = true;
+    Serial.println("USB mounted! Macro keyboard ready!");
+  } else {
+    Serial.println("USB mount timeout - continuing anyway");
+    hid_ready = true; // Allow operation even if USB isn't fully ready
+  }
+  
   print_macro_config();
+  
+  // Initial LED setup - show macro colors
+  update_leds();
+  
+  Serial.println("Setup complete! Press keys to test macros.");
 }
 
+// Arduino loop function
 void loop() {
+  // Process keyboard input
   process_keyboard();
-    delay(10); // 100Hz update rate
+  
+  // Small delay for stability
+  delay(10); // 100Hz update rate
 }

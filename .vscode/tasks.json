@@ -13,6 +13,19 @@
 				"$gcc"
 			],
 			"group": "build"
+		},
+		{
+			"label": "Test Build",
+			"type": "shell",
+			"command": "platformio",
+			"args": [
+				"run"
+			],
+			"isBackground": false,
+			"problemMatcher": [
+				"$gcc"
+			],
+			"group": "build"
 		}
 	]
 }
