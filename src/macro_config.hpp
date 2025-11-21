@@ -17,25 +17,30 @@ struct MacroKey {
 #define MODIFIER_ALT      0x04
 #define MODIFIER_GUI      0x08  // Windows/Cmd key
 
-// Common key combinations
-#define CTRL_C            (MODIFIER_CTRL)
-#define CTRL_V            (MODIFIER_CTRL)
-#define CTRL_Z            (MODIFIER_CTRL)
-#define CTRL_S            (MODIFIER_CTRL)
-#define ALT_TAB           (MODIFIER_ALT)
-#define WIN_L             (MODIFIER_GUI)
+enum Colors {
+    GREEN = 0x00FF00,
+    BLUE = 0x0000FF,
+    RED = 0xFF0000,
+    YELLOW = 0xFFFF00,
+    MAGENTA = 0xFF00FF,
+    CYAN = 0x00FFFF,
+    LIME = 0x80FF00,
+    ORANGE = 0xFF8000,
+    PURPLE = 0x8000FF,
+    SKY_BLUE = 0x0080FF,
+};
 
 // Default macro configuration (16 keys)
 const MacroKey default_macros[16] = {
   // Row 1 (keys 0-3)
-  {HID_KEY_C,           CTRL_C,        "Copy",           0x00FF00},  // Green
-  {HID_KEY_V,           CTRL_V,        "Paste",          0x0000FF},  // Blue
-  {HID_KEY_Z,           CTRL_Z,        "Undo",           0xFF0000},  // Red
-  {HID_KEY_S,           CTRL_S,        "Save",           0xFFFF00},  // Yellow
+  {HID_KEY_C,           MODIFIER_GUI,        "Copy",           0x00FF00},  // Green
+  {HID_KEY_V,           MODIFIER_GUI,        "Paste",          0x0000FF},  // Blue
+  {HID_KEY_Z,           MODIFIER_GUI,        "Undo",           0xFF0000},  // Red
+  {HID_KEY_S,           MODIFIER_GUI,        "Save",           0xFFFF00},  // Yellow
   
   // Row 2 (keys 4-7)
-  {HID_KEY_TAB,         ALT_TAB,       "Alt+Tab",        0xFF00FF},  // Magenta
-  {HID_KEY_L,           WIN_L,         "Lock Screen",    0x00FFFF},  // Cyan
+  {HID_KEY_TAB,         MODIFIER_ALT,       "Alt+Tab",        0xFF00FF},  // Magenta
+  {HID_KEY_L,           MODIFIER_GUI,         "Lock Screen",    0x00FFFF},  // Cyan
   {HID_KEY_F5,          MODIFIER_NONE, "Refresh",        0x80FF00},  // Lime
   {HID_KEY_ESCAPE,      MODIFIER_NONE, "Escape",         0xFF8000},  // Orange
   

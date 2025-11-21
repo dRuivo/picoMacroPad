@@ -1,33 +1,21 @@
-#include "Arduino.h"
+#include <Arduino.h>
 #include <Adafruit_TinyUSB.h>
-
-#include "pico_rgb_keypad.hpp"
 #include "macro_config.hpp"
+#include "pico_rgb_keypad.hpp"
 
-/*
-  Pico RGB Keypad Macro Keyboard
-  
-  Features:
-  - 16 customizable macro keys with RGB LED feedback
-  - USB HID keyboard + Serial functionality  
-  - Configurable key mappings with modifier support
-  - Visual feedback for key presses
-*/
+// Standard keyboard descriptor
+uint8_t const desc_hid_report[] = {
+  TUD_HID_REPORT_DESC_KEYBOARD()
+};
 
-using namespace pimoroni;
-
-// Hardware instances
-PicoRGBKeypad pico_keypad;
+// Hardware objects
 Adafruit_USBD_HID usb_hid;
+pimoroni::PicoRGBKeypad pico_keypad;
 
 // State variables
 uint16_t button_states = 0;
 uint16_t last_button_states = 0;
 uint32_t last_update = 0;
-bool hid_ready = false;
-
-// Macro configuration (can be customized)
-MacroKey current_macros[16];
 
 // Function to convert 24-bit color to RGB components
 void color_to_rgb(uint32_t color, uint8_t &r, uint8_t &g, uint8_t &b) {
@@ -39,13 +27,13 @@ void color_to_rgb(uint32_t color, uint8_t &r, uint8_t &g, uint8_t &b) {
 // Update LED colors based on current state
 void update_leds() {
   uint32_t current_time = millis();
-  
-  for (int i = 0; i < PicoRGBKeypad::NUM_PADS; i++) {
+
+  for (int i = 0; i < pimoroni::PicoRGBKeypad::NUM_PADS; i++) {
     uint8_t r, g, b;
-    
+  
     // Check if button is currently pressed
     bool is_pressed = (button_states & (1 << i)) != 0;
-    
+  
     if (is_pressed) {
       // Bright white when pressed
       color_to_rgb(COLOR_PRESSED, r, g, b);
@@ -54,15 +42,15 @@ void update_leds() {
       b = (b * BRIGHTNESS_BRIGHT);
     } else {
       // Show macro color when not pressed
-      color_to_rgb(current_macros[i].color, r, g, b);
+      color_to_rgb(default_macros[i].color, r, g, b);
       r = (r * BRIGHTNESS_DIM);
       g = (g * BRIGHTNESS_DIM);
       b = (b * BRIGHTNESS_DIM);
     }
-    
+  
     pico_keypad.illuminate(i, r, g, b);
   }
-  
+
   // Add a subtle beat indicator on key 15 if no keys are pressed
   if (button_states == 0) {
     if ((current_time / 1000) % 2 == 0) {
@@ -74,38 +62,28 @@ void update_leds() {
       pico_keypad.illuminate(15, beat_r, beat_g, beat_b);
     }
   }
-  
+
   pico_keypad.update();
 }
 
-// Send macro key combination
 void send_macro(const MacroKey& macro) {
-  if (!hid_ready || !usb_hid.ready()) {
-    Serial.println("USB HID not ready!");
-    return;
+  if (!usb_hid.ready()) {
+    Serial.println("HID not ready (still trying anyway)");
   }
-  
-  // Send key press using the correct TinyUSB API
-  uint8_t keycodes[6] = {macro.key_code, 0, 0, 0, 0, 0};
-  usb_hid.keyboardReport(0, macro.modifier, keycodes);
-  
-  delay(10); // Small delay to ensure key is registered
-  
-  // Release all keys (send empty report)
-  uint8_t empty_keys[6] = {0, 0, 0, 0, 0, 0};
-  usb_hid.keyboardReport(0, 0, empty_keys);
-  
-  // Debug output
+
+  uint8_t report[8] = {0};
+  report[0] = macro.modifier;  // Modifier byte
+  report[2] = macro.key_code;   // Keycode
+
+  usb_hid.sendReport(0, report, 8); // key press
+  delay(50);
+  memset(report, 0, sizeof(report));
+  usb_hid.sendReport(0, report, 8); // key release
+
   Serial.print("Macro sent: ");
-  Serial.print(macro.description);
-  Serial.print(" (Key: 0x");
-  Serial.print(macro.key_code, HEX);
-  Serial.print(", Mod: 0x");
-  Serial.print(macro.modifier, HEX);
-  Serial.println(")");
+  Serial.println(macro.description);
 }
 
-// Main keyboard processing loop
 void process_keyboard() {
   // Read current button states
   button_states = pico_keypad.get_button_states();
@@ -114,98 +92,42 @@ void process_keyboard() {
   uint16_t pressed_buttons = button_states & ~last_button_states;
   
   // Process each newly pressed button
-  for (int i = 0; i < PicoRGBKeypad::NUM_PADS; i++) {
+  for (int i = 0; i < pimoroni::PicoRGBKeypad::NUM_PADS; i++) {
     if (pressed_buttons & (1 << i)) {
       // Button was just pressed
       Serial.print("Button ");
       Serial.print(i);
       Serial.println(" pressed!");
-      send_macro(current_macros[i]);
+      send_macro(default_macros[i]);
     }
   }
-  
-  // Update LED display
-  update_leds();
-  
-  // Store current state for next iteration
   last_button_states = button_states;
+  update_leds();
 }
 
-// Print macro configuration to serial
-void print_macro_config() {
-  Serial.println("\\n=== Current Macro Configuration ===");
-  for (int i = 0; i < 16; i++) {
-    Serial.print("Key ");
-    Serial.print(i);
-    Serial.print(": ");
-    Serial.print(current_macros[i].description);
-    Serial.print(" (0x");
-    Serial.print(current_macros[i].key_code, HEX);
-    Serial.print(", Mod: 0x");
-    Serial.print(current_macros[i].modifier, HEX);
-    Serial.print(", Color: 0x");
-    Serial.print(current_macros[i].color, HEX);
-    Serial.println(")");
-  }
-  Serial.println("==================================");
-}
-
-// Arduino setup function
 void setup() {
-  // Initialize serial for debugging
   Serial.begin(115200);
-  
-  // Small delay to allow serial to initialize
-  delay(2000);
-  
-  Serial.println("Pico RGB Keypad Macro Keyboard Starting...");
-  
-  // Copy default macro configuration
-  for (int i = 0; i < 16; i++) {
-    current_macros[i] = default_macros[i];
+
+  usb_hid.setBootProtocol(HID_ITF_PROTOCOL_KEYBOARD);
+  usb_hid.setReportDescriptor(desc_hid_report, sizeof(desc_hid_report));
+  usb_hid.setStringDescriptor("Pico Macro Keyboard");
+  usb_hid.setPollInterval(10);
+  usb_hid.begin();
+
+  // Wait until USB mounted (if possible)
+  uint32_t start = millis();
+  while (!TinyUSBDevice.mounted() && (millis() - start < 5000)) {
+    delay(10);
   }
-  
-  // Initialize hardware
+
   pico_keypad.init();
   pico_keypad.set_brightness(BRIGHTNESS_NORMAL);
-  
-  Serial.println("Hardware initialized...");
-  
-  // Initialize USB HID
-  usb_hid.setPollInterval(2);
-  usb_hid.begin();
-  
-  Serial.println("USB HID initialized...");
-  
-  // Wait for USB to be ready (with timeout)
-  uint32_t start_time = millis();
-  while (!TinyUSBDevice.mounted() && (millis() - start_time < 5000)) {
-    delay(100);
-    Serial.print(".");
-  }
-  Serial.println();
-  
-  if (TinyUSBDevice.mounted()) {
-    hid_ready = true;
-    Serial.println("USB mounted! Macro keyboard ready!");
-  } else {
-    Serial.println("USB mount timeout - continuing anyway");
-    hid_ready = true; // Allow operation even if USB isn't fully ready
-  }
-  
-  print_macro_config();
-  
-  // Initial LED setup - show macro colors
+
   update_leds();
-  
-  Serial.println("Setup complete! Press keys to test macros.");
+
+  Serial.println("Pico2 HID test starting...");
 }
 
-// Arduino loop function
 void loop() {
-  // Process keyboard input
   process_keyboard();
-  
-  // Small delay for stability
-  delay(10); // 100Hz update rate
 }
