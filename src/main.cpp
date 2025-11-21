@@ -4,77 +4,198 @@
 #include <stdlib.h>
 #include <math.h>
 #include "pico/stdlib.h"
+#include <Adafruit_TinyUSB.h>
 
 #include "pico_rgb_keypad.hpp"
-/*
-  Test buttons/lights by lighting them up in a sequence of colors.
+#include "macro_config.hpp"
 
-  Press each button in turn, it will light up green.
-  Once all buttons are lit, they will turn off.
-  Press them again to light them in the next color.
+/*
+  Pico RGB Keypad Macro Keyboard
+  
+  Features:
+  - 16 customizable macro keys
+  - USB HID keyboard functionality
+  - RGB LED feedback
+  - Configurable key mappings with modifiers
+  - Visual feedback for key presses
 */
 
 using namespace pimoroni;
 
+// Hardware instances
 PicoRGBKeypad pico_keypad;
+Adafruit_USBD_HID usb_hid;
 
-constexpr uint8_t num_colors = 6;
+// State variables
+uint16_t button_states = 0;
+uint16_t last_button_states = 0;
+uint32_t last_update = 0;
+uint8_t beat_counter = 0;
+bool hid_ready = false;
 
-// Simple struct to pair r/g/b together as a color
-struct color {uint8_t r, g, b;};
+// Macro configuration (can be customized)
+MacroKey current_macros[16];
 
-color colors[num_colors] = {
-  {0x00, 0x20, 0x00}, // Green
-  {0x20, 0x20, 0x00}, // Yellow
-  {0x20, 0x00, 0x00}, // Red
-  {0x20, 0x00, 0x20}, // Pink
-  {0x00, 0x00, 0x20}, // Blue
-  {0x00, 0x20, 0x20}  // Teal
-};
+// Function to convert 24-bit color to RGB components
+void color_to_rgb(uint32_t color, uint8_t &r, uint8_t &g, uint8_t &b) {
+  r = (color >> 16) & 0xFF;
+  g = (color >> 8) & 0xFF;
+  b = color & 0xFF;
+}
 
-int main() {
-  pico_keypad.init();
-  pico_keypad.set_brightness(1.0f);
-
-  uint16_t lit_buttons = 0;
-  uint8_t color_index = 0;
-  color current_color = colors[color_index];
-  uint8_t beat = 0;
-
-  while(true) {
-    // Read button states from i2c expander
-    // for any pressed buttons set the corresponding bit in "lit_buttons"
-    // lit_buttons |= pico_keypad.get_button_states();
-
-    // You could use a bitwise XOR (^) to make the buttons toggle their respective "lit" bits on and off:
-    lit_buttons ^= pico_keypad.get_button_states();
-
-    // Iterate through the lights
-    for(auto i = 0u; i < PicoRGBKeypad::NUM_PADS; i++) {
-      if(lit_buttons & (0b1 << i)) {
-        pico_keypad.illuminate(i, current_color.r, current_color.g, current_color.b);
-      }else{
-        // Kinda dim white-ish
-        pico_keypad.illuminate(i, 0x0, 0x0, 0x0);
-      }
+// Update LED colors based on current state
+void update_leds() {
+  uint32_t current_time = millis();
+  
+  for (int i = 0; i < PicoRGBKeypad::NUM_PADS; i++) {
+    uint8_t r, g, b;
+    
+    // Check if button is currently pressed
+    bool is_pressed = (button_states & (1 << i)) != 0;
+    
+    if (is_pressed) {
+      // Bright white when pressed
+      color_to_rgb(COLOR_PRESSED, r, g, b);
+      r = (r * BRIGHTNESS_BRIGHT);
+      g = (g * BRIGHTNESS_BRIGHT);
+      b = (b * BRIGHTNESS_BRIGHT);
+    } else {
+      // Show macro color when not pressed
+      color_to_rgb(current_macros[i].color, r, g, b);
+      r = (r * BRIGHTNESS_DIM);
+      g = (g * BRIGHTNESS_DIM);
+      b = (b * BRIGHTNESS_DIM);
     }
-
-    pico_keypad.illuminate(beat, 0x20, 0x0, 0x0); // Light up the beat button
-    beat = (beat + 1) % PicoRGBKeypad::NUM_PADS; // Cycle through the beat button
-
-    // Display the LED changes
-    pico_keypad.update();
-
-    sleep_ms(100);
-
-    if (lit_buttons == 0xffff) {
-      sleep_ms(500); // Wait a little so the last button can be seen
-      lit_buttons = 0; // Reset lit buttons
-      color_index += 1; // Proceed to the next color
-      if(color_index == num_colors) color_index = 0; // Wrap at last color
-      current_color = colors[color_index]; // Update the current color
+    
+    pico_keypad.illuminate(i, r, g, b);
+  }
+  
+  // Add a subtle beat indicator on key 15 if no keys are pressed
+  if (button_states == 0) {
+    if ((current_time / 1000) % 2 == 0) {
+      uint8_t beat_r, beat_g, beat_b;
+      color_to_rgb(COLOR_BEAT, beat_r, beat_g, beat_b);
+      beat_r *= BRIGHTNESS_DIM;
+      beat_g *= BRIGHTNESS_DIM;
+      beat_b *= BRIGHTNESS_DIM;
+      pico_keypad.illuminate(15, beat_r, beat_g, beat_b);
     }
   }
+  
+  pico_keypad.update();
+}
 
-  return 0;
+// Initialize the macro keyboard
+void setup_macro_keyboard() {
+  // Copy default macro configuration
+  for (int i = 0; i < 16; i++) {
+    current_macros[i] = default_macros[i];
+  }
+  
+  // Initialize hardware
+  pico_keypad.init();
+  pico_keypad.set_brightness(BRIGHTNESS_NORMAL);
+  
+  // Initialize USB HID 
+  usb_hid.setPollInterval(2);
+  usb_hid.begin();
+  
+  // Wait for USB to be ready
+  while (!TinyUSBDevice.mounted()) {
+    delay(1);
+  }
+  
+  hid_ready = true;
+  
+  // Initial LED setup - show macro colors
+  update_leds();
+}
+
+// Send macro key combination
+void send_macro(const MacroKey& macro) {
+  if (!hid_ready || !usb_hid.ready()) {
+    return;
+  }
+  
+  // Send key press using the correct TinyUSB API
+  uint8_t keycodes[6] = {macro.key_code, 0, 0, 0, 0, 0};
+  usb_hid.keyboardReport(0, macro.modifier, keycodes);
+  
+  delay(10); // Small delay to ensure key is registered
+  
+  // Release all keys (send empty report)
+  uint8_t empty_keys[6] = {0, 0, 0, 0, 0, 0};
+  usb_hid.keyboardReport(0, 0, empty_keys);
+  
+  // Debug output
+  Serial.print("Macro sent: ");
+  Serial.print(macro.description);
+  Serial.print(" (Key: 0x");
+  Serial.print(macro.key_code, HEX);
+  Serial.print(", Mod: 0x");
+  Serial.print(macro.modifier, HEX);
+  Serial.println(")");
+}
+
+// Main keyboard processing loop
+void process_keyboard() {
+  // Read current button states
+  button_states = pico_keypad.get_button_states();
+  
+  // Check for newly pressed buttons
+  uint16_t pressed_buttons = button_states & ~last_button_states;
+  
+  // Process each newly pressed button
+  for (int i = 0; i < PicoRGBKeypad::NUM_PADS; i++) {
+    if (pressed_buttons & (1 << i)) {
+      // Button was just pressed
+      send_macro(current_macros[i]);
+    }
+  }
+  
+  // Update LED display
+  update_leds();
+  
+  // Store current state for next iteration
+  last_button_states = button_states;
+}
+
+// Print macro configuration to serial
+void print_macro_config() {
+  Serial.println("\n=== Current Macro Configuration ===");
+  for (int i = 0; i < 16; i++) {
+    Serial.print("Key ");
+    Serial.print(i);
+    Serial.print(": ");
+    Serial.print(current_macros[i].description);
+    Serial.print(" (0x");
+    Serial.print(current_macros[i].key_code, HEX);
+    Serial.print(", Mod: 0x");
+    Serial.print(current_macros[i].modifier, HEX);
+    Serial.print(", Color: 0x");
+    Serial.print(current_macros[i].color, HEX);
+    Serial.println(")");
+  }
+  Serial.println("==================================\n");
+}
+
+void setup() {
+  // Initialize serial for debugging
+  Serial.begin(115200);
+  
+  // Small delay to allow serial to initialize
+  delay(1000);
+  
+  Serial.println("Pico RGB Keypad Macro Keyboard Starting...");
+  
+  // Setup the macro keyboard
+  setup_macro_keyboard();
+  
+  Serial.println("Macro keyboard ready!");
+  print_macro_config();
+}
+
+void loop() {
+  process_keyboard();
+    delay(10); // 100Hz update rate
 }
