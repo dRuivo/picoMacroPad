@@ -76,3 +76,5 @@ const MacroKey default_macros[16] = {
 #define BRIGHTNESS_NORMAL 0.5f
 #define BRIGHTNESS_DIM    0.1f
 #define BRIGHTNESS_BRIGHT 1.0f
+
+void send_macro(const MacroKey& macro);
